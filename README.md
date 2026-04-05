@@ -53,10 +53,12 @@ DeepMVP-Plus/
 │   └── build_protein_features.py   # Parse node2vec output → protein_features_ppi.npy
 │
 ├── slurm/                          # SLURM job submission scripts
-    ├── submit_deepmvp_noppi.sh
-    ├── submit_deepmvp_ppi.sh
-    └── submit_deepmvp_ppi_n2v.sh│
-
+│   ├── submit_deepmvp_noppi.sh
+│   ├── submit_deepmvp_ppi.sh
+│   └── submit_deepmvp_ppi_n2v.sh
+│
+└── notebooks/                      # Exploratory analysis (poster work)
+    └── exploratory/
 ```
 
 ---
@@ -188,4 +190,4 @@ Nature Methods, 2025.
 
 ## License
 
-MIT# DeepMVP-Plus
+MIT
