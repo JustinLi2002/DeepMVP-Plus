@@ -23,6 +23,6 @@ nvidia-smi
 echo "================"
 
 cd /home/FCAM/juli/HRP
-python deepmvpppi.py
+python deepmvp_kinase.py
 
 echo "Done at" `date`
