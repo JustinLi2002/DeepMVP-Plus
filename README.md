@@ -185,9 +185,3 @@ Wen B, Wang C, Li K, et al. DeepMVP: deep learning models trained on
 high-quality data accurately predict PTM sites and variant-induced alterations.
 Nature Methods, 2025.
 ```
-
----
-
-## License
-
-MIT
