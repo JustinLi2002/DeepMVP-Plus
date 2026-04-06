@@ -1,4 +1,4 @@
-# DeepMVP-Plus
+# ContextPTM
 
 Extending [DeepMVP](https://github.com/bzhanglab/DeepMVP) with protein-level context features for improved PTM site prediction across six modification types.
 
