@@ -1,19 +1,20 @@
-# Context-Aware PTM Site Prediction via Protein Interaction Network Embeddings and Kinase Priors
+# ContextPTM
 
-We propose ContextPTM, a context-aware PTM prediction framework that augments sequence-based models with protein-level structural and biochemical priors.
+**ContextPTM: Context-Aware PTM Site Prediction via Protein Interaction Network Embeddings and Kinase Priors**
 
-**Justin Li, Ji Yu** · Center for Cell Analysis and Modeling, UConn Health
+*Justin Li, Ji Yu · Center for Cell Analysis and Modeling, UConn Health*
 
 ---
 
 ## Overview
 
-[DeepMVP](https://github.com/bzhanglab/DeepMVP) (Wen et al., *Nature Methods* 2025) predicts PTM sites using only local sequence windows, ignoring protein-level context. This repository extends DeepMVP by incorporating two complementary protein-level feature sets:
+DeepMVP (Wen et al., *Nature Methods* 2025) predicts PTM sites using only local sequence windows, ignoring protein-level context. This repository proposes **ContextPTM**, which augments the CNN+BiGRU ensemble with two complementary protein-level feature sets:
 
 1. **node2vec PPI embeddings (128-dim)**: learned from the STRING v12.0 physical interaction network via node2vec
 2. **Kinase prediction scores (605-dim)**: aggregated per-protein scores from GPS 5.0, NetworkKIN, and PhosphoPICK
+3. **Combined (733-dim)**: both feature types concatenated
 
-Both feature types are incorporated as an additional branch in the CNN+BiGRU ensemble model, and evaluated against a reproduced DeepMVP baseline across all 8 PTM types.
+All variants are evaluated against a reproduced DeepMVP baseline across all 8 PTM types.
 
 ---
 
@@ -21,32 +22,33 @@ Both feature types are incorporated as an additional branch in the CNN+BiGRU ens
 
 All AUROC values on held-out test sets. Ensemble of 10 models with IQR outlier-excluded averaging.
 
-| PTM | Original DeepMVP | Baseline (reproduced) | +Kinase Scores | +node2vec PPI |
-|-----|------------------|-----------------------|----------------|---------------|
-| Phosphorylation S/T | 0.950 | 0.9510 | **0.9665** | 0.9654 |
-| Phosphorylation Y | 0.910 | 0.8710 | **0.9296** | 0.9220 |
-| Sumoylation K | 0.850 | 0.8615 | **0.9256** | 0.9210 |
-| Ubiquitination K | 0.870 | 0.8814 | **0.9296** | 0.9248 |
-| Acetylation K | 0.900 | 0.9049 | **0.9616** | 0.9560 |
-| N-Glycosylation N | 0.980 | 0.9868 | **0.9968** | 0.9954 |
-| Methylation K | 0.950 | 0.9503 | **0.9814** | 0.9785 |
-| Methylation R | 0.960 | 0.9306 | **0.9812** | 0.9738 |
+| PTM | Original DeepMVP | Baseline | +Kinase | +node2vec PPI | +Combined |
+|-----|------------------|----------|---------|---------------|-----------|
+| Phosphorylation S/T | 0.950 | 0.9510 | 0.9665 | 0.9654 | **0.9672** |
+| Phosphorylation Y | 0.910 | 0.8710 | 0.9321 | 0.9220 | **0.9340** |
+| Sumoylation K | 0.850 | 0.8615 | 0.9256 | 0.9210 | **0.9269** |
+| Ubiquitination K | 0.870 | 0.8814 | 0.9296 | 0.9248 | **0.9307** |
+| Acetylation K | 0.900 | 0.9049 | 0.9615 | 0.9560 | **0.9623** |
+| N-Glycosylation N | 0.980 | 0.9868 | 0.9968 | 0.9954 | **0.9969** |
+| Methylation K | 0.950 | 0.9503 | 0.9814 | 0.9785 | **0.9815** |
+| Methylation R | 0.960 | 0.9306 | 0.9810 | 0.9738 | **0.9811** |
 
-Both feature types consistently outperform the original DeepMVP across all 8 PTM types.
+All three feature variants consistently outperform the original DeepMVP across all 8 PTM types. The combined model achieves the best performance on all PTM types, suggesting that PPI network topology and kinase regulatory context provide complementary information.
 
 ---
 
 ## Repository Structure
 
 ```
-DeepMVP-Plus/
+ContextPTM/
 │
 ├── README.md
 │
 ├── models/                         # PTM prediction models
 │   ├── deepmvp_reproduce_v2.py     # Baseline: CNN+BiGRU ensemble, sequence only
-│   ├── deepmvp_ppi.py              # +Kinase scores (605-dim)
-│   └── deepmvp_ppi_n2v.py         # +node2vec PPI embeddings (128-dim)
+│   ├── deepmvp_ppi.py              # +node2vec PPI embeddings (128-dim)
+│   ├── deepmvp_kinase.py           # +Kinase prediction scores (605-dim)
+│   └── deepmvp_combined.py         # +Combined (node2vec + kinase, 733-dim)
 │
 ├── embeddings/                     # Feature generation scripts
 │   ├── node2vec_train.py           # Train node2vec on STRING PPI network
@@ -55,7 +57,8 @@ DeepMVP-Plus/
 ├── slurm/                          # SLURM job submission scripts
 │   ├── submit_deepmvp_noppi.sh
 │   ├── submit_deepmvp_ppi.sh
-│   └── submit_deepmvp_ppi_n2v.sh
+│   ├── submit_deepmvp_ppi_n2v.sh
+│   └── submit_deepmvp_kinase.sh
 │
 └── notebooks/                      # Exploratory analysis (poster work)
     └── exploratory/
@@ -185,3 +188,9 @@ Wen B, Wang C, Li K, et al. DeepMVP: deep learning models trained on
 high-quality data accurately predict PTM sites and variant-induced alterations.
 Nature Methods, 2025.
 ```
+
+---
+
+## License
+
+© 2025 Justin Li, Ji Yu. All rights reserved. Code will be released upon publication.
