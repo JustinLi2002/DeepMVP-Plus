@@ -1,10 +1,10 @@
 """
-DeepMVP原版复现脚本 v2（无PPI）
-架构参考论文Extended Data Fig. 3c：
-  - 多层CNN（LeakyReLU + BatchNorm + Dropout）
-  - 固定双向GRU（50 units）
-  - Dense层
-  - 10个模型ensemble，IQR outlier-excluded average
+DeepMVP Original Reproduction Script v2 (No PPI)
+Architecture Reference: Extended Data Fig. 3c
+- Multi-layer CNN (LeakyReLU + BatchNorm + Dropout)
+- Fixed Bidirectional GRU (50 units)
+- Dense Layer
+- 10-Model Ensemble: IQR Outlier-Excluded Average
 """
 
 import numpy as np
@@ -19,14 +19,12 @@ from tqdm import tqdm
 import copy
 import os
 
-# ─────────────────────────────────────────
-# 0. 全局设置
-# ─────────────────────────────────────────
+
 DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-NUM_MODELS = 10          # ensemble大小
-MAX_EPOCHS = 100         # 原版最多100 epochs
-PATIENCE   = 10          # early stopping patience
-BATCH_TRAIN = 64         # 原版batch size
+NUM_MODELS = 10         
+MAX_EPOCHS = 100    
+PATIENCE   = 10         
+BATCH_TRAIN = 64       
 BATCH_TEST  = 512
 LR          = 1e-3
 
@@ -35,11 +33,9 @@ aa_to_idx = {aa: i for i, aa in enumerate(AA_LIST)}
 C        = len(AA_LIST)  # 23
 EYE      = np.eye(C, dtype=np.float32)
 
-# ─────────────────────────────────────────
-# 1. Dataset
-# ─────────────────────────────────────────
+#1. Dataset
 class PTMDataset(Dataset):
-    """原版输入：仅序列，无PPI"""
+    """Original Input: Sequence Only, No PPI"""
     def __init__(self, df):
         self.seq = df["x"].values
         self.y   = df["y"].values.astype(np.float32)
@@ -55,26 +51,26 @@ class PTMDataset(Dataset):
 
 
 # ─────────────────────────────────────────
-# 2. 模型架构（参考 Extended Data Fig. 3c）
+# 2. Model Architecture(Refer to Extended Data Fig. 3c)
 # ─────────────────────────────────────────
 class DeepMVP_Single(nn.Module):
-    """
-    CNN + 双向GRU + Dense
-    与原版论文Fig 3c尽量对齐：
-      conv1: in_ch→512, kernel=5, BN, LeakyReLU, Dropout
-      conv2: 512→512,   kernel=5, BN, LeakyReLU, Dropout
-      conv3: 512→128,   kernel=5, BN, activation, Dropout
-      BiGRU: 128→50*2=100
-      Flatten → Dense(5700→64) → BN → activation → Dropout
-      Dense(64→1)
-    注：5700 = 100 * seq_len，这里seq_len=31时为3100，用AdaptiveAvgPool归一化
-    实际上原版把GRU最终hidden state拿出来，不是flatten所有时间步
-    这里用last hidden state: (batch, 100)
-    """
+"""
+CNN + Bidirectional GRU + Dense
+Designed to align as closely as possible with Fig. 3c of the original paper:
+conv1: in_ch → 512, kernel=5, BN, LeakyReLU, Dropout
+conv2: 512 → 512,   kernel=5, BN, LeakyReLU, Dropout
+conv3: 512 → 128,   kernel=5, BN, activation, Dropout
+BiGRU: 128 → 50*2=100
+Flatten → Dense(5700 → 64) → BN → activation → Dropout
+Dense(64 → 1)
+Note: 5700 = 100 * seq_len; specifically, when seq_len=31, this value is 3100. AdaptiveAvgPool is used here for normalization.
+In reality, the original paper extracts the final hidden state from the GRU rather than flattening the outputs across all time steps.
+Therefore, the *last* hidden state is used here: (batch, 100).
+"""
     def __init__(self, in_ch=23, seq_len=31, dropout=0.3):
         super().__init__()
 
-        # CNN模块
+        # CNN
         self.conv1 = nn.Conv1d(in_ch, 512, kernel_size=5, padding=2)
         self.bn1   = nn.BatchNorm1d(512)
         self.conv2 = nn.Conv1d(512, 512, kernel_size=5, padding=2)
@@ -83,15 +79,15 @@ class DeepMVP_Single(nn.Module):
         self.bn3   = nn.BatchNorm1d(128)
         self.drop  = nn.Dropout(dropout)
 
-        # 双向GRU，固定50 units（原版）
+        # GRU，50 units
         self.gru = nn.GRU(
             input_size=128,
             hidden_size=50,
             batch_first=True,
             bidirectional=True
-        )  # 输出hidden: (2, batch, 50) → cat → (batch, 100)
+        ) 
 
-        # Dense层
+        # Dense
         self.fc1    = nn.Linear(100, 64)
         self.bn4    = nn.BatchNorm1d(64)
         self.drop2  = nn.Dropout(dropout)
@@ -103,7 +99,7 @@ class DeepMVP_Single(nn.Module):
         x = self.drop(F.leaky_relu(self.bn2(self.conv2(x))))
         x = self.drop(F.leaky_relu(self.bn3(self.conv3(x))))
 
-        # CNN输出: (batch, 128, L) → GRU需要 (batch, L, 128)
+        # CNN: (batch, 128, L) → GRU (batch, L, 128)
         x = x.permute(0, 2, 1)
         _, h = self.gru(x)           # h: (2, batch, 50)
         x = torch.cat([h[0], h[1]], dim=1)  # (batch, 100)
@@ -112,9 +108,7 @@ class DeepMVP_Single(nn.Module):
         return self.fc_out(x).squeeze(-1)
 
 
-# ─────────────────────────────────────────
-# 3. 训练单个模型（含early stopping）
-# ─────────────────────────────────────────
+
 def train_one_model(train_loader, val_loader, seed, device,
                     max_epochs=MAX_EPOCHS, patience=PATIENCE):
     torch.manual_seed(seed)
@@ -123,12 +117,11 @@ def train_one_model(train_loader, val_loader, seed, device,
     model     = DeepMVP_Single().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
-    # pos_weight：从loader里统计
+    # pos_weight
     all_y = np.concatenate([yb.numpy() for _, yb in train_loader.dataset
                              .__class__(train_loader.dataset.seq,
                                         train_loader.dataset.y)
                              ]) if False else None
-    # 直接用dataset
     ys        = train_loader.dataset.y
     neg, pos  = (ys == 0).sum(), (ys == 1).sum()
     pos_weight = torch.tensor([neg / pos], dtype=torch.float32, device=device)
@@ -164,9 +157,6 @@ def train_one_model(train_loader, val_loader, seed, device,
     return model, best_val_auc
 
 
-# ─────────────────────────────────────────
-# 4. 单模型评估
-# ─────────────────────────────────────────
 def eval_loader_single(loader, model, device):
     model.eval()
     ys, ps = [], []
@@ -181,14 +171,12 @@ def eval_loader_single(loader, model, device):
     return roc_auc_score(y_true, y_prob), average_precision_score(y_true, y_prob)
 
 
-# ─────────────────────────────────────────
-# 5. Ensemble推理（IQR outlier-excluded average）
-# ─────────────────────────────────────────
+
 def ensemble_predict(models, loader, device):
-    """
-    收集所有模型的预测概率，shape: (n_models, n_samples)
-    对每个样本做IQR过滤后取均值
-    """
+"""
+Collect the predicted probabilities from all models (shape: (n_models, n_samples)).
+Apply IQR filtering to each sample, then compute the mean.
+"""
     all_probs = []
     for model in models:
         model.eval()
@@ -225,20 +213,16 @@ def eval_ensemble(models, loader, device):
     return auc, auprc
 
 
-# ─────────────────────────────────────────
-# 6. 主流程
-# ─────────────────────────────────────────
 def run_ptm(ptm_name, train_df, test_df, device,
             val_ratio=0.1, num_models=NUM_MODELS):
-    """
-    对单个PTM类型训练10个模型并ensemble评估
-    val_ratio: 从train里划出多少做validation（原版9%）
-    """
+"""
+Train 10 models for a single PTM type and evaluate them via ensembling.
+val_ratio: The proportion of the training data allocated for validation (9% in the original version).
+"""
     print(f"\n{'='*60}")
     print(f"PTM: {ptm_name}")
     print(f"{'='*60}")
 
-    # ── 数据集 ──
     n_val   = int(len(train_df) * val_ratio)
     idx     = np.random.permutation(len(train_df))
     val_df  = train_df.iloc[idx[:n_val]].reset_index(drop=True)
@@ -255,7 +239,6 @@ def run_ptm(ptm_name, train_df, test_df, device,
     tst_loader = DataLoader(tst_ds, batch_size=BATCH_TEST,
                             shuffle=False, num_workers=2, pin_memory=True)
 
-    # ── 训练10个模型 ──
     models     = []
     val_aucs   = []
     for seed in range(num_models):
@@ -267,7 +250,6 @@ def run_ptm(ptm_name, train_df, test_df, device,
         val_aucs.append(val_auc)
         print(f"  Model {seed+1} val AUC: {val_auc:.4f}")
 
-    # ── Ensemble评估 ──
     ens_auc, ens_auprc = eval_ensemble(models, tst_loader, device)
     print(f"\n[{ptm_name}] Ensemble Test AUROC={ens_auc:.4f}, AUPRC={ens_auprc:.4f}")
     print(f"  Individual val AUCs: {[f'{v:.4f}' for v in val_aucs]}")
@@ -275,9 +257,6 @@ def run_ptm(ptm_name, train_df, test_df, device,
     return models, ens_auc, ens_auprc
 
 
-# ─────────────────────────────────────────
-# 7. 入口：按PTM类型循环
-# ─────────────────────────────────────────
 if __name__ == "__main__":
     BASE = "/home/FCAM/juli/HRP/retrain"
 
@@ -302,13 +281,12 @@ if __name__ == "__main__":
         )
         results[ptm_name] = {"AUROC": auc, "AUPRC": auprc}
 
-        # 保存模型权重
         os.makedirs(f"checkpoints/{ptm_name}", exist_ok=True)
         for i, m in enumerate(models):
             torch.save(m.state_dict(),
                        f"checkpoints/{ptm_name}/model_{i}.pt")
 
-    # ── 汇总 ──
+    # ── Summary ──
     print("\n" + "="*60)
     print("SUMMARY")
     print("="*60)
