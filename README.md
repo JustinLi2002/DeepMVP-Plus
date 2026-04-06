@@ -1,6 +1,6 @@
 # ContextPTM: Context-Aware PTM Site Prediction via Protein-Level Graph and Kinase Priors
 
-Extending [DeepMVP](https://github.com/bzhanglab/DeepMVP) with protein-level context features for improved PTM site prediction across six modification types.
+We propose ContextPTM, a context-aware PTM prediction framework that augments sequence-based models with protein-level structural and biochemical priors.
 
 **Justin Li, Ji Yu** · Center for Cell Analysis and Modeling, UConn Health
 
@@ -8,7 +8,7 @@ Extending [DeepMVP](https://github.com/bzhanglab/DeepMVP) with protein-level con
 
 ## Overview
 
-DeepMVP (Wen et al., *Nature Methods* 2025) predicts PTM sites using only local sequence windows, ignoring protein-level context. This repository extends DeepMVP by incorporating two complementary protein-level feature sets:
+[DeepMVP](https://github.com/bzhanglab/DeepMVP) (Wen et al., *Nature Methods* 2025) predicts PTM sites using only local sequence windows, ignoring protein-level context. This repository extends DeepMVP by incorporating two complementary protein-level feature sets:
 
 1. **node2vec PPI embeddings (128-dim)**: learned from the STRING v12.0 physical interaction network via node2vec
 2. **Kinase prediction scores (605-dim)**: aggregated per-protein scores from GPS 5.0, NetworkKIN, and PhosphoPICK
