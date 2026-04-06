@@ -1,4 +1,4 @@
-# ContextPTM: Context-Aware PTM Site Prediction via Protein-Level Graph and Kinase Priors
+# Context-Aware PTM Site Prediction via Protein Interaction Network Embeddings and Kinase Priors
 
 We propose ContextPTM, a context-aware PTM prediction framework that augments sequence-based models with protein-level structural and biochemical priors.
 
