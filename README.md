@@ -1,4 +1,4 @@
-# ContextPTM
+# ContextPTM: Context-Aware PTM Site Prediction via Protein-Level Graph and Kinase Priors
 
 Extending [DeepMVP](https://github.com/bzhanglab/DeepMVP) with protein-level context features for improved PTM site prediction across six modification types.
 
