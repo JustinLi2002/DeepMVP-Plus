@@ -9,9 +9,6 @@ from sklearn.metrics import roc_auc_score, average_precision_score
 import copy
 import os
 
-# ─────────────────────────────────────────
-# 0. 全局设置（与baseline完全相同）
-# ─────────────────────────────────────────
 DEVICE      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 NUM_MODELS  = 10
 MAX_EPOCHS  = 100
@@ -27,9 +24,7 @@ EYE       = np.eye(C, dtype=np.float32)
 
 print(f"Using device: {DEVICE}")
 
-# ─────────────────────────────────────────
-# 1. Dataset（含PPI）
-# ─────────────────────────────────────────
+# Dataset（
 class PTMDataset_PPI(Dataset):
     def __init__(self, df):
         self.seq = df["x"].values
@@ -49,19 +44,16 @@ class PTMDataset_PPI(Dataset):
                 torch.tensor(self.y[i]))
 
 
-# ─────────────────────────────────────────
-# 2. 模型架构（baseline + PPI分支）
-# ─────────────────────────────────────────
+
 class DeepMVP_PPI(nn.Module):
-    """
-    与baseline完全相同的CNN+BiGRU主干
-    额外加入PPI分支：FC(605→128) → LeakyReLU
-    融合：cat([gru_out(100), ppi_out(128)]) → FC(228→64) → out
-    """
+"""
+A CNN+BiGRU backbone identical to the baseline.
+Addition of a PPI branch: FC(605→128) → LeakyReLU.
+Fusion: cat([gru_out(100), ppi_out(128)]) → FC(228→64) → out.
+"""
     def __init__(self, in_ch=23, ppi_dim=605, dropout=0.3):
         super().__init__()
 
-        # ── 序列主干（与baseline完全相同）──
         self.conv1 = nn.Conv1d(in_ch, 512, kernel_size=5, padding=2)
         self.bn1   = nn.BatchNorm1d(512)
         self.conv2 = nn.Conv1d(512, 512, kernel_size=5, padding=2)
@@ -77,17 +69,14 @@ class DeepMVP_PPI(nn.Module):
             bidirectional=True
         )  # → (batch, 100)
 
-        # ── PPI分支 ──
         self.ppi_fc = nn.Linear(ppi_dim, 128)
 
-        # ── 融合层（100+128=228） ──
         self.fc1    = nn.Linear(228, 64)
         self.bn4    = nn.BatchNorm1d(64)
         self.drop2  = nn.Dropout(dropout)
         self.fc_out = nn.Linear(64, 1)
 
     def forward(self, x_seq, x_ppi):
-        # 序列主干
         x = self.drop(F.leaky_relu(self.bn1(self.conv1(x_seq))))
         x = self.drop(F.leaky_relu(self.bn2(self.conv2(x))))
         x = self.drop(F.leaky_relu(self.bn3(self.conv3(x))))
@@ -95,18 +84,13 @@ class DeepMVP_PPI(nn.Module):
         _, h = self.gru(x)
         x = torch.cat([h[0], h[1]], dim=1)   # (batch, 100)
 
-        # PPI分支
         p = F.leaky_relu(self.ppi_fc(x_ppi))  # (batch, 128)
 
-        # 融合
         x = torch.cat([x, p], dim=1)           # (batch, 228)
         x = self.drop2(F.leaky_relu(self.bn4(self.fc1(x))))
         return self.fc_out(x).squeeze(-1)
 
 
-# ─────────────────────────────────────────
-# 3. 评估
-# ─────────────────────────────────────────
 def eval_loader(loader, model, device):
     model.eval()
     ys, ps = [], []
@@ -122,9 +106,7 @@ def eval_loader(loader, model, device):
     return roc_auc_score(y_true, y_prob), average_precision_score(y_true, y_prob)
 
 
-# ─────────────────────────────────────────
-# 4. 训练单个模型
-# ─────────────────────────────────────────
+# train single models
 def train_one_model(trn_loader, val_loader, seed, ppi_dim, device,
                     max_epochs=MAX_EPOCHS, patience=PATIENCE):
     torch.manual_seed(seed)
@@ -172,9 +154,7 @@ def train_one_model(trn_loader, val_loader, seed, ppi_dim, device,
     return model, best_val_auc
 
 
-# ─────────────────────────────────────────
-# 5. Ensemble（与baseline完全相同）
-# ─────────────────────────────────────────
+# Ensemble
 def ensemble_predict(models, loader, device):
     all_probs = []
     for model in models:
@@ -210,10 +190,6 @@ def eval_ensemble(models, loader, device):
     y_true = np.concatenate([yb.numpy() for _, _, yb in loader])
     return roc_auc_score(y_true, y_prob), average_precision_score(y_true, y_prob)
 
-
-# ─────────────────────────────────────────
-# 6. 主流程
-# ─────────────────────────────────────────
 def load_ppi(feat_path, ids_path):
     protein_features = np.load(feat_path)
     with open(ids_path, "r") as f:
@@ -242,7 +218,6 @@ def run_ptm(ptm_name, train_df, test_df, ppi_dim, device,
     print(f"Train: {len(train_df)}  Test: {len(test_df)}")
     print(f"{'='*60}")
 
-    # 与baseline相同的数据划分（相同seed=42）
     np.random.seed(42)
     idx    = np.random.permutation(len(train_df))
     n_val  = int(len(train_df) * val_ratio)
@@ -286,16 +261,13 @@ def run_ptm(ptm_name, train_df, test_df, ppi_dim, device,
     return ens_auc, ens_auprc
 
 
-# ─────────────────────────────────────────
-# 7. 入口
-# ─────────────────────────────────────────
 if __name__ == "__main__":
 
     BASE      = "/home/FCAM/juli/HRP/retrain"
     FEAT_PATH = "/home/FCAM/juli/HRP/notebooks/protein_features.npy"
     IDS_PATH  = "/home/FCAM/juli/HRP/notebooks/protein_ids.json"
 
-    # 加载PPI数据
+    # load PPI data
     protein_to_vec, ppi_dim, zero_vec = load_ppi(FEAT_PATH, IDS_PATH)
     print(f"PPI dim: {ppi_dim}, proteins: {len(protein_to_vec)}")
 
@@ -322,7 +294,7 @@ if __name__ == "__main__":
         train_df = pd.read_csv(train_path, sep="\t")
         test_df  = pd.read_csv(test_path,  sep="\t")
 
-        # 加入PPI特征
+        # add PPI features
         train_df = add_ppi(train_df, protein_to_vec, zero_vec)
         test_df  = add_ppi(test_df,  protein_to_vec, zero_vec)
 
@@ -330,7 +302,7 @@ if __name__ == "__main__":
                              ppi_dim=ppi_dim, device=DEVICE)
         results[ptm_name] = {"AUROC": auc, "AUPRC": auprc}
 
-    # 汇总
+    # summary
     print("\n" + "="*60)
     print("FINAL SUMMARY (+PPI)")
     print("="*60)
