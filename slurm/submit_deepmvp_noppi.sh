@@ -10,7 +10,7 @@
 #SBATCH --gres=gpu:A100:1
 ### To send email when the job is completed:
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=justin.2.li@uconn.edu
+#SBATCH --mail-user=youremail
 ### Output and error logs
 #SBATCH -e deepmvp_noppi.err
 #SBATCH -o deepmvp_noppi.log
@@ -23,15 +23,15 @@ echo Running on host `hostname`
 echo Time is `date`
 echo Directory is `pwd`
 
-source /home/FCAM/juli/HRP/my-venv/bin/activate
+source /home/your-directory/my-venv/bin/activate
 
-mkdir -p /home/FCAM/juli/HRP/logs
+mkdir -p /your-directory/logs
 
 echo "=== GPU INFO ==="
 nvidia-smi
 echo "================"
 
-cd /home/FCAM/juli/HRP
+cd /your/work/directory
 python deepmvp_reproduce_v2.py
 
 echo "Done."
