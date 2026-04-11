@@ -24,7 +24,10 @@ EYE       = np.eye(C, dtype=np.float32)
 
 print(f"Using device: {DEVICE}")
 
-# Dataset（
+
+# ---------------------------------------------------------
+# 1. Dataset
+# ---------------------------------------------------------
 class PTMDataset_PPI(Dataset):
     def __init__(self, df):
         self.seq = df["x"].values
@@ -44,16 +47,20 @@ class PTMDataset_PPI(Dataset):
                 torch.tensor(self.y[i]))
 
 
-
-class DeepMVP_PPI(nn.Module):
-"""
-A CNN+BiGRU backbone identical to the baseline.
-Addition of a PPI branch: FC(605→128) → LeakyReLU.
-Fusion: cat([gru_out(100), ppi_out(128)]) → FC(228→64) → out.
-"""
-    def __init__(self, in_ch=23, ppi_dim=605, dropout=0.3):
+# ---------------------------------------------------------
+# 2. Model: +kinase prediction scores branch (605-dim)
+# ---------------------------------------------------------
+class DeepMVP_Kinase(nn.Module):
+    """
+    CNN+BiGRU backbone identical to baseline.
+    Additional kinase scores branch: FC(605->128) -> LeakyReLU.
+    Fusion: cat([gru_out(100), kinase_out(128)]) -> FC(228->64) -> out.
+    Kinase scores: aggregated per-protein predictions from GPS, NetworkKIN, PhosphoPICK.
+    """
+    def __init__(self, in_ch=23, kinase_dim=605, dropout=0.3):
         super().__init__()
 
+        # Sequence backbone
         self.conv1 = nn.Conv1d(in_ch, 512, kernel_size=5, padding=2)
         self.bn1   = nn.BatchNorm1d(512)
         self.conv2 = nn.Conv1d(512, 512, kernel_size=5, padding=2)
@@ -67,10 +74,12 @@ Fusion: cat([gru_out(100), ppi_out(128)]) → FC(228→64) → out.
             hidden_size=50,
             batch_first=True,
             bidirectional=True
-        )  # → (batch, 100)
+        )  # -> (batch, 100)
 
-        self.ppi_fc = nn.Linear(ppi_dim, 128)
+        # Kinase scores branch
+        self.ppi_fc = nn.Linear(kinase_dim, 128)
 
+        # Fusion: 100 + 128 = 228
         self.fc1    = nn.Linear(228, 64)
         self.bn4    = nn.BatchNorm1d(64)
         self.drop2  = nn.Dropout(dropout)
@@ -82,7 +91,7 @@ Fusion: cat([gru_out(100), ppi_out(128)]) → FC(228→64) → out.
         x = self.drop(F.leaky_relu(self.bn3(self.conv3(x))))
         x = x.permute(0, 2, 1)
         _, h = self.gru(x)
-        x = torch.cat([h[0], h[1]], dim=1)   # (batch, 100)
+        x = torch.cat([h[0], h[1]], dim=1)    # (batch, 100)
 
         p = F.leaky_relu(self.ppi_fc(x_ppi))  # (batch, 128)
 
@@ -91,6 +100,9 @@ Fusion: cat([gru_out(100), ppi_out(128)]) → FC(228→64) → out.
         return self.fc_out(x).squeeze(-1)
 
 
+# ---------------------------------------------------------
+# 3. Evaluation
+# ---------------------------------------------------------
 def eval_loader(loader, model, device):
     model.eval()
     ys, ps = [], []
@@ -106,13 +118,15 @@ def eval_loader(loader, model, device):
     return roc_auc_score(y_true, y_prob), average_precision_score(y_true, y_prob)
 
 
-# train single models
+# ---------------------------------------------------------
+# 4. Train single model
+# ---------------------------------------------------------
 def train_one_model(trn_loader, val_loader, seed, ppi_dim, device,
                     max_epochs=MAX_EPOCHS, patience=PATIENCE):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    model     = DeepMVP_PPI(ppi_dim=ppi_dim).to(device)
+    model     = DeepMVP_Kinase(kinase_dim=ppi_dim).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
     ys         = trn_loader.dataset.y
@@ -154,7 +168,9 @@ def train_one_model(trn_loader, val_loader, seed, ppi_dim, device,
     return model, best_val_auc
 
 
-# Ensemble
+# ---------------------------------------------------------
+# 5. Ensemble
+# ---------------------------------------------------------
 def ensemble_predict(models, loader, device):
     all_probs = []
     for model in models:
@@ -168,7 +184,7 @@ def ensemble_predict(models, loader, device):
                 ps.append(prob)
         all_probs.append(np.concatenate(ps))
 
-    all_probs = np.stack(all_probs, axis=0)  # (10, n_samples)
+    all_probs = np.stack(all_probs, axis=0)
 
     q1    = np.percentile(all_probs, 25, axis=0)
     q3    = np.percentile(all_probs, 75, axis=0)
@@ -190,6 +206,10 @@ def eval_ensemble(models, loader, device):
     y_true = np.concatenate([yb.numpy() for _, _, yb in loader])
     return roc_auc_score(y_true, y_prob), average_precision_score(y_true, y_prob)
 
+
+# ---------------------------------------------------------
+# 6. Data loading helpers
+# ---------------------------------------------------------
 def load_ppi(feat_path, ids_path):
     protein_features = np.load(feat_path)
     with open(ids_path, "r") as f:
@@ -210,6 +230,9 @@ def add_ppi(df, protein_to_vec, zero_vec):
     return df
 
 
+# ---------------------------------------------------------
+# 7. Main pipeline
+# ---------------------------------------------------------
 def run_ptm(ptm_name, train_df, test_df, ppi_dim, device,
             val_ratio=0.1, num_models=NUM_MODELS):
 
@@ -224,9 +247,9 @@ def run_ptm(ptm_name, train_df, test_df, ppi_dim, device,
     val_df = train_df.iloc[idx[:n_val]].reset_index(drop=True)
     trn_df = train_df.iloc[idx[n_val:]].reset_index(drop=True)
 
-    trn_ds  = PTMDataset_PPI(trn_df)
-    val_ds  = PTMDataset_PPI(val_df)
-    tst_ds  = PTMDataset_PPI(test_df)
+    trn_ds = PTMDataset_PPI(trn_df)
+    val_ds = PTMDataset_PPI(val_df)
+    tst_ds = PTMDataset_PPI(test_df)
 
     pin = DEVICE.type == "cuda"
     trn_loader = DataLoader(trn_ds, batch_size=BATCH_TRAIN,
@@ -246,13 +269,13 @@ def run_ptm(ptm_name, train_df, test_df, ppi_dim, device,
         )
         models.append(model)
         val_aucs.append(val_auc)
-        print(f"  → Best val AUC: {val_auc:.4f}")
+        print(f"  -> Best val AUC: {val_auc:.4f}")
 
     ens_auc, ens_auprc = eval_ensemble(models, tst_loader, device)
     print(f"\n[{ptm_name}] Ensemble  AUROC={ens_auc:.4f}  AUPRC={ens_auprc:.4f}")
     print(f"  Individual val AUCs: {[f'{v:.4f}' for v in val_aucs]}")
 
-    ckpt_dir = f"checkpoints_ppi/{ptm_name}"
+    ckpt_dir = f"checkpoints_kinase/{ptm_name}"
     os.makedirs(ckpt_dir, exist_ok=True)
     for i, m in enumerate(models):
         torch.save(m.state_dict(), f"{ckpt_dir}/model_{i}.pt")
@@ -261,15 +284,17 @@ def run_ptm(ptm_name, train_df, test_df, ppi_dim, device,
     return ens_auc, ens_auprc
 
 
+# ---------------------------------------------------------
+# 8. Entry point
+# ---------------------------------------------------------
 if __name__ == "__main__":
 
     BASE      = "/home/FCAM/juli/HRP/retrain"
-    FEAT_PATH = "/home/FCAM/juli/HRP/notebooks/protein_features.npy"
+    FEAT_PATH = "/home/FCAM/juli/HRP/notebooks/protein_features.npy"   # kinase scores 605-dim
     IDS_PATH  = "/home/FCAM/juli/HRP/notebooks/protein_ids.json"
 
-    # load PPI data
     protein_to_vec, ppi_dim, zero_vec = load_ppi(FEAT_PATH, IDS_PATH)
-    print(f"PPI dim: {ppi_dim}, proteins: {len(protein_to_vec)}")
+    print(f"Kinase dim: {ppi_dim}, proteins: {len(protein_to_vec)}")
 
     PTM_TASKS = [
         ("phosphorylation_st", "phosphorylation_st"),
@@ -294,7 +319,6 @@ if __name__ == "__main__":
         train_df = pd.read_csv(train_path, sep="\t")
         test_df  = pd.read_csv(test_path,  sep="\t")
 
-        # add PPI features
         train_df = add_ppi(train_df, protein_to_vec, zero_vec)
         test_df  = add_ppi(test_df,  protein_to_vec, zero_vec)
 
@@ -302,9 +326,8 @@ if __name__ == "__main__":
                              ppi_dim=ppi_dim, device=DEVICE)
         results[ptm_name] = {"AUROC": auc, "AUPRC": auprc}
 
-    # summary
     print("\n" + "="*60)
-    print("FINAL SUMMARY (+PPI)")
+    print("FINAL SUMMARY (+Kinase Scores)")
     print("="*60)
     print(f"{'PTM':<25}  {'AUROC':>7}  {'AUPRC':>7}")
     print("-"*45)
