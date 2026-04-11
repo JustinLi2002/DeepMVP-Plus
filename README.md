@@ -189,8 +189,3 @@ high-quality data accurately predict PTM sites and variant-induced alterations.
 Nature Methods, 2025.
 ```
 
----
-
-## License
-
-
